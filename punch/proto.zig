@@ -19,8 +19,8 @@ pub const Role = enum(u8) {
 };
 // TODO: it's possible an endpoint could be both an initator and a forwarder
 //       if I find a use-case for this, I can make an initiator and forwarder flag
-pub const initiatorHandshake = magic ++ [1]u8 {@enumToInt(Role.initiator)};
-pub const forwarderHandshake = magic ++ [1]u8 {@enumToInt(Role.forwarder)};
+pub const initiatorHandshake = magic ++ [1]u8 {@intFromEnum(Role.initiator)};
+pub const forwarderHandshake = magic ++ [1]u8 {@intFromEnum(Role.forwarder)};
 
 pub const TwoWayMessage = struct {
     pub const Heartbeat = 0;

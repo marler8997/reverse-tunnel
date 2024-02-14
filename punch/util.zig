@@ -52,8 +52,8 @@ pub fn doHandshake(punchFd: fd_t, myRole: proto.Role, recvTimeoutMillis: u32) !v
         return error.BadPunchHandshake;
     }
     const role = handshake[punch.proto.magic.len];
-    if (role != @enumToInt(expectRole)) {
-        log("received punch role {} but expected {} ({})", .{role, expectRole, @enumToInt(expectRole)});
+    if (role != @intFromEnum(expectRole)) {
+        log("received punch role {} but expected {} ({})", .{role, expectRole, @intFromEnum(expectRole)});
         return error.BadPunchHandshake;
     }
 }
@@ -191,14 +191,14 @@ pub fn forwardRawToPunch(rawFd: fd_t, punchFd: fd_t, buffer: []u8) !void {
 }
 
 fn writeU64Big(buf: [*]u8, value: u64) void {
-    buf[0] = @truncate(u8, value >> 56);
-    buf[1] = @truncate(u8, value >> 48);
-    buf[2] = @truncate(u8, value >> 40);
-    buf[3] = @truncate(u8, value >> 32);
-    buf[4] = @truncate(u8, value >> 24);
-    buf[5] = @truncate(u8, value >> 16);
-    buf[6] = @truncate(u8, value >>  8);
-    buf[7] = @truncate(u8, value >>  0);
+    buf[0] = @truncate(value >> 56);
+    buf[1] = @truncate(value >> 48);
+    buf[2] = @truncate(value >> 40);
+    buf[3] = @truncate(value >> 32);
+    buf[4] = @truncate(value >> 24);
+    buf[5] = @truncate(value >> 16);
+    buf[6] = @truncate(value >>  8);
+    buf[7] = @truncate(value >>  0);
 }
 
 pub const PunchRecvState = union(enum) {
@@ -224,7 +224,7 @@ const PunchAction = union(enum) {
 
 pub fn parsePunchToNextAction(state: *PunchRecvState, data: *[]const u8) !PunchAction {
     assert(data.*.len > 0);
-    //std.debug.warn("[DEBUG] parsing {}-bytes...\n", .{data.*.len});
+    //std.debug.print("[DEBUG] parsing {}-bytes...\n", .{data.*.len});
     while (true) {
         switch (try parsePunchMessage(state, data)) {
             .None => if (data.*.len == 0) return PunchAction.None,
@@ -277,13 +277,13 @@ fn parsePunchDataMessage(state: *PunchRecvState, data: *[]const u8) !PunchAction
     if (data.*.len == 0)
         return PunchAction.None;
     if (data.*.len >= state.Data.dataLeft) {
-        var forwardData = data.*[0..state.Data.dataLeft];
+        const forwardData = data.*[0..state.Data.dataLeft];
         data.* = data.*[state.Data.dataLeft..];
         state.* = PunchRecvState.Initial;
         return PunchAction { .ForwardData = .{ .data = forwardData } };
     }
     state.Data.dataLeft -= data.*.len;
-    var forwardData = data.*;
+    const forwardData = data.*;
     data.* = data.*[data.*.len..];
     return PunchAction { .ForwardData = .{ .data = forwardData } };
 }
@@ -304,7 +304,7 @@ fn testParser(t: *const ParserTest, chunkLen: usize) !void {
             data.len else chunkLen;
         var nextChunk = data[0..nextLen];
         const action = try parsePunchToNextAction(&state, &nextChunk);
-        std.debug.warn("action {}\n", .{action});
+        std.debug.print("action {}\n", .{action});
         switch (action) {
             .None => std.debug.assert(nextChunk.len == 0),
             .OpenTunnel => {
@@ -326,7 +326,7 @@ fn testParser(t: *const ParserTest, chunkLen: usize) !void {
                 switch (t.actions[expectedActionIndex]) {
                     .ForwardData => |expectedForward| {
                         const expected = expectedForward.data[expectedForwardDataOffset..];
-                        //std.debug.warn("[DEBUG] verifying {} bytes {x}\n", .{actualForward.data.len, std.fmt.fmtSliceHexLower(actualForward.data)});
+                        //std.debug.print("[DEBUG] verifying {} bytes {x}\n", .{actualForward.data.len, std.fmt.fmtSliceHexLower(actualForward.data)});
                         std.debug.assert(std.mem.startsWith(u8, expected, actualForward.data));
                         expectedForwardDataOffset += actualForward.data.len;
                         if (expectedForwardDataOffset == expectedForward.data.len) {

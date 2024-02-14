@@ -17,15 +17,16 @@ fn makeThrottler(logPrefix: []const u8) timing.Throttler {
 }
 
 const global = struct {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const arena = arena_instance.allocator();
 };
 
 fn usage() void {
-    std.debug.warn("Usage: restarter PROGRAM ARGS\n", .{});
+    std.debug.print("Usage: restarter PROGRAM ARGS\n", .{});
 }
 
 pub fn main() anyerror!u8 {
-    var args = try std.process.argsAlloc(&global.arena.allocator);
+    var args = try std.process.argsAlloc(global.arena);
     if (args.len <= 1) {
         usage();
         return 1;
@@ -36,9 +37,9 @@ pub fn main() anyerror!u8 {
     while (true) {
         throttler.throttle();
         logging.logTimestamp();
-        std.debug.warn("[restarter] starting: ", .{});
+        std.debug.print("[restarter] starting: ", .{});
         printArgs(args);
-        std.debug.warn("\n", .{});
+        std.debug.print("\n", .{});
         // TODO: is there a way to use an allocator that can free?
         var proc = try std.ChildProcess.init(args, &global.arena.allocator);
         defer proc.deinit();
@@ -50,7 +51,7 @@ pub fn main() anyerror!u8 {
 fn printArgs(argv: []const []const u8) void {
     var prefix : []const u8 = "";
     for (argv) |arg| {
-        std.debug.warn("{s}'{s}'", .{prefix, arg});
+        std.debug.print("{s}'{s}'", .{prefix, arg});
         prefix = " ";
     }
 }

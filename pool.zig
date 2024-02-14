@@ -31,7 +31,7 @@ pub fn Pool(comptime T: type, chunkSize: usize) type {
                 while (i < chunkSize) : (i += 1) {
                     if (!chunk.allocated[i]) {
                         chunk.allocated[i] = true;
-                        //std.debug.warn("[DEBUG] returning existing chunk 0x{x} index {}\n", .{@ptrToInt(&chunk.array[i]), i});
+                        //std.debug.print("[DEBUG] returning existing chunk 0x{x} index {}\n", .{@ptrToInt(&chunk.array[i]), i});
                         return &chunk.array[i];
                     }
                 }
@@ -40,7 +40,7 @@ pub fn Pool(comptime T: type, chunkSize: usize) type {
             @memset(@ptrCast([*]u8, &newChunk.allocated), 0, @sizeOf(@TypeOf(newChunk.allocated)));
             try self.chunks.append(newChunk);
             newChunk.allocated[0] = true;
-            //std.debug.warn("[DEBUG] returning new chunk 0x{x}\n", .{@ptrToInt(&newChunk.array[0])});
+            //std.debug.print("[DEBUG] returning new chunk 0x{x}\n", .{@ptrToInt(&newChunk.array[0])});
             return &newChunk.array[0];
         }
 
@@ -56,7 +56,7 @@ pub fn Pool(comptime T: type, chunkSize: usize) type {
                     return;
                 }
             }
-            //std.debug.warn("destroy got invalid address 0x{x}\n", .{@ptrToInt(ptr)});
+            //std.debug.print("destroy got invalid address 0x{x}\n", .{@ptrToInt(ptr)});
             std.debug.assert(false);
         }
         pub fn range(self: *@This()) PoolRange(T, chunkSize) {

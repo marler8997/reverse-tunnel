@@ -14,7 +14,7 @@ const MAX_PORT_DIGITS = 5;
 pub const Proxy = union(enum) {
     None: void,
     Http: Http,
-    
+
     pub const Http = struct {
         host: []const u8,
         port: u16,
@@ -103,7 +103,7 @@ pub fn receiveHttpOk(sockfd: fd_t, readTimeoutMillis: i32) !void {
         const received = try os.read(sockfd, &buf);
         if (received == 0)
             return error.HttpProxyDisconnectedDurringReply;
-        //std.debug.warn("[DEBUG] got '{}' 0x{x}\n", .{buf[0..], buf[0]});
+        //std.debug.print("[DEBUG] got '{}' 0x{x}\n", .{buf[0..], buf[0]});
         switch (state) {
             .Reading200 => |left| {
                 if (buf[0] != Http200Response[left])
@@ -144,16 +144,16 @@ pub fn parseProxyTyped(comptime String: type, connectSpec: String) !HostAndProxy
     if (common.skipOver(String, &rest, "http://")) {
         const slashIndex = mem.indexOfScalar(u8, rest, '/') orelse
             return error.MissingSlashToDelimitProxy;
-        var host = rest[slashIndex + 1..];
+        const host = rest[slashIndex + 1..];
         if (host.len == 0)
             return error.NoHostAfterProxy;
         var proxyHostPort = rest[0 .. slashIndex];
-        var proxyColonIndex = mem.indexOfScalar(u8, proxyHostPort, ':') orelse
+        const proxyColonIndex = mem.indexOfScalar(u8, proxyHostPort, ':') orelse
             return error.ProxyMissingPort;
-        var proxyHost = proxyHostPort[0 .. proxyColonIndex];
+        const proxyHost = proxyHostPort[0 .. proxyColonIndex];
         if (proxyHost.len == 0)
             return error.ProxyMissingHost;
-        var proxyPortString = proxyHostPort[proxyColonIndex+1..];
+        const proxyPortString = proxyHostPort[proxyColonIndex+1..];
         if (proxyHost.len == 0)
             return error.ProxyMissingPort;
         const proxyPort = std.fmt.parseInt(u16, proxyPortString, 10) catch |e| switch (e) {

@@ -49,7 +49,8 @@ const ForwardingEventer = eventing.EventerTemplate(.{
 });
 
 const global = struct {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const arena = arena_instance.allocator();
     var rawListenAddr : Address = undefined;
     var listenFd : fd_t = undefined;
     var buffer : [8192]u8 = undefined;
@@ -67,7 +68,7 @@ fn usage() void {
     log("Usage: punch-server-initiator PUNCH_LISTEN_ADDR PUNCH_PORT RAW_LISTEN_ADDR RAW_PORT", .{});
 }
 pub fn main() !u8 {
-    var args = try std.process.argsAlloc(&global.arena.allocator);
+    var args = try std.process.argsAlloc(global.arena);
     if (args.len <= 1) {
         usage();
         return 1;

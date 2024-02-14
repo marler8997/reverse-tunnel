@@ -1,15 +1,15 @@
 const builtin = @import("builtin");
 const std = @import("std");
 const mem = std.mem;
-const os = std.os;
+const posix = std.posix;
 
 const logging = @import("./logging.zig");
 const timing = @import("./timing.zig");
 
 const panic = std.debug.panic;
 const log = logging.log;
-const fd_t = os.fd_t;
-const socket_t = os.socket_t;
+const fd_t = posix.fd_t;
+const socket_t = posix.socket_t;
 const Address = std.net.Address;
 
 // TODO: this should go somewhere else (i.e. std.algorithm in D)
@@ -23,25 +23,25 @@ pub fn skipOver(comptime T: type, haystack: *T, needle: []const u8) bool {
 
 pub fn delaySeconds(seconds: u32, msg: []const u8) void {
     log("waiting {} seconds {s}", .{seconds, msg});
-    std.time.sleep(@intCast(u64, seconds) * std.time.ns_per_s);
+    std.time.sleep(@as(u64, seconds) * std.time.ns_per_s);
 }
 
-pub fn makeListenSock(listenAddr: *Address) !socket_t {
-    var flags : u32 = os.SOCK.STREAM;
+pub fn makeListenSock(listenAddr: *const Address) !socket_t {
+    var flags : u32 = posix.SOCK.STREAM;
     if (builtin.os.tag != .windows) {
-        flags = flags | os.SOCK.NONBLOCK;
+        flags = flags | posix.SOCK.NONBLOCK;
     }
-    const sockfd = try os.socket(listenAddr.any.family, flags, os.IPPROTO.TCP);
-    errdefer os.close(sockfd);
+    const sockfd = try posix.socket(listenAddr.any.family, flags, posix.IPPROTO.TCP);
+    errdefer posix.close(sockfd);
     if (builtin.os.tag != .windows) {
-        try os.setsockopt(sockfd, os.SOL.SOCKET, os.SO.REUSEADDR, &mem.toBytes(@as(c_int, 1)));
+        try posix.setsockopt(sockfd, posix.SOL.SOCKET, posix.SO.REUSEADDR, &mem.toBytes(@as(c_int, 1)));
     }
-    os.bind(sockfd, &listenAddr.any, listenAddr.getOsSockLen()) catch |e| {
-        std.debug.warn("bind to address '{}' failed: {}\n", .{listenAddr, e});
+    posix.bind(sockfd, &listenAddr.any, listenAddr.getOsSockLen()) catch |e| {
+        std.debug.print("bind to address '{}' failed: {}\n", .{listenAddr, e});
         return error.AlreadyReported;
     };
-    os.listen(sockfd, 8) catch |e| {
-        std.debug.warn("listen failed: {}\n", .{e});
+    posix.listen(sockfd, 8) catch |e| {
+        std.debug.print("listen failed: {}\n", .{e});
         return error.AlreadyReported;
     };
     return sockfd;
@@ -49,27 +49,33 @@ pub fn makeListenSock(listenAddr: *Address) !socket_t {
 
 pub fn getsockerror(sockfd: socket_t) !c_int {
     var errorCode : c_int = undefined;
-    var resultLen : os.socklen_t = @sizeOf(c_int);
-    switch (os.errno(os.linux.getsockopt(sockfd, os.SOL.SOCKET, os.SO.ERROR, @ptrCast([*]u8, &errorCode), &resultLen))) {
+    var resultLen : posix.socklen_t = @sizeOf(c_int);
+    switch (posix.errno(std.os.linux.getsockopt(
+        sockfd,
+        posix.SOL.SOCKET,
+        posix.SO.ERROR,
+        @ptrCast(&errorCode),
+        &resultLen,
+    ))) {
         0 => return errorCode,
         .EBADF => unreachable,
         .EFAULT => unreachable,
         .EINVAL => unreachable,
         .ENOPROTOOPT => unreachable,
         .ENOTSOCK => unreachable,
-        else => |err| return os.unexpectedErrno(err),
+        else => |err| return std.os.unexpectedErrno(err),
     }
 }
 
-pub fn connect(sockfd: socket_t, addr: *const Address) os.ConnectError!void {
-    return os.connect(sockfd, &addr.any, addr.getOsSockLen());
+pub fn connect(sockfd: socket_t, addr: *const Address) std.os.ConnectError!void {
+    return posix.connect(sockfd, &addr.any, addr.getOsSockLen());
 }
 pub fn connectHost(host: []const u8, port: u16) !socket_t {
     // so far only ipv4 addresses supported
     if (Address.parseIp(host, port)) |addr| {
-        const sockfd = try os.socket(addr.any.family, os.SOCK.STREAM, os.IPPROTO.TCP);
-        errdefer os.close(sockfd);
-        try os.connect(sockfd, &addr.any, addr.getOsSockLen());
+        const sockfd = try posix.socket(addr.any.family, posix.SOCK.STREAM, posix.IPPROTO.TCP);
+        errdefer posix.close(sockfd);
+        try posix.connect(sockfd, &addr.any, addr.getOsSockLen());
         return sockfd;
     } else |_| {
         // TODO: implement DNS
@@ -81,7 +87,7 @@ const extern_windows = struct {
     pub extern "ws2_32" fn shutdown(
         s: socket_t,
         how: c_int
-    ) callconv(os.windows.WINAPI) c_int;
+    ) callconv(std.os.windows.WINAPI) c_int;
     pub const SD_BOTH = 2;
 };
 
@@ -107,7 +113,7 @@ pub const ShutdownError = error{
     FileDescriptorNotASocket,
 
     SystemResources
-} || std.os.UnexpectedError;
+} || std.posix.UnexpectedError;
 
 pub fn shutdown(sockfd: socket_t) ShutdownError!void {
     if (builtin.os.tag == .windows) {
@@ -123,30 +129,31 @@ pub fn shutdown(sockfd: socket_t) ShutdownError!void {
             .WSANOTINITIALISED => unreachable,
             else => |err| return std.os.windows.unexpectedWSAError(err),
         };
-    } else switch (os.errno(os.linux.shutdown(sockfd, os.SHUT.RDWR))) {
+    } else switch (posix.errno(std.os.linux.shutdown(sockfd, posix.SHUT.RDWR))) {
         .SUCCESS => return,
         .BADF => unreachable,
         .INVAL => return error.InvalidShutdownHow,
         .NOTCONN => return error.SocketNotConnected,
         .NOTSOCK => return error.FileDescriptorNotASocket,
         .NOBUFS => return error.SystemResources,
-        else => |err| return os.unexpectedErrno(err),
+        else => |err| return std.os.unexpectedErrno(err),
     }
 }
 
 pub fn shutdownclose(sockfd: socket_t) void {
     shutdown(sockfd) catch { }; // ignore error
-    os.close(sockfd);
+    posix.close(sockfd);
 }
 
 // workaround https://github.com/ziglang/zig/issues/9971
-fn sendWorkaround(sockfd: socket_t, buf: []const u8, flags: u32) os.SendError!usize {
+fn sendWorkaround(sockfd: socket_t, buf: []const u8, flags: u32) posix.SendError!usize {
     if (builtin.os.tag == .windows) {
-        const rc = os.windows.ws2_32.send(sockfd, buf.ptr, @intCast(i32, buf.len), flags);
-        if (rc != os.windows.ws2_32.SOCKET_ERROR)
-            return @intCast(usize, rc);
+        const len = std.math.cast(i32, buf.len) orelse std.math.maxInt(i32);
+        const rc = std.os.windows.ws2_32.send(sockfd, buf.ptr, len, flags);
+        if (rc != std.os.windows.ws2_32.SOCKET_ERROR)
+            return @intCast(rc);
 
-        switch (os.windows.ws2_32.WSAGetLastError()) {
+        switch (std.os.windows.ws2_32.WSAGetLastError()) {
             .WSAEACCES => return error.AccessDenied,
             .WSAECONNRESET => return error.ConnectionResetByPeer,
             .WSAEMSGSIZE => return error.MessageTooBig,
@@ -162,10 +169,10 @@ fn sendWorkaround(sockfd: socket_t, buf: []const u8, flags: u32) os.SendError!us
             .WSAESHUTDOWN => unreachable, // The socket has been shut down; it is not possible to WSASendTo on a socket after shutdown has been invoked with how set to SD_SEND or SD_BOTH.
             .WSAEWOULDBLOCK => return error.WouldBlock,
             .WSANOTINITIALISED => unreachable, // A successful WSAStartup call must occur before using this function.
-            else => |err| return os.windows.unexpectedWSAError(err),
+            else => |err| return std.os.windows.unexpectedWSAError(err),
         }
     }
-    return os.send(sockfd, buf, flags);
+    return posix.send(sockfd, buf, flags);
 }
 
 pub fn sendfull(sockfd: socket_t, buf: []const u8, flags: u32) !void {
@@ -186,7 +193,7 @@ const WriteAllErrorResult = struct {
 pub fn tryWriteAll(fd: fd_t, buf: []const u8) ?WriteAllErrorResult {
     var total_wrote : usize = 0;
     while (total_wrote < buf.len) {
-        const last_wrote = os.write(fd, buf[total_wrote..]) catch |e|
+        const last_wrote = posix.write(fd, buf[total_wrote..]) catch |e|
             return WriteAllErrorResult { .err = e, .wrote = total_wrote };
         if (last_wrote == 0)
             return WriteAllErrorResult { .err = error.FdClosed, .wrote = total_wrote };
@@ -196,10 +203,10 @@ pub fn tryWriteAll(fd: fd_t, buf: []const u8) ?WriteAllErrorResult {
 }
 
 fn waitGenericTimeout(fd: fd_t, timeoutMillis: i32, events: i16) !bool {
-    var pollfds = [1]os.linux.pollfd {
-        os.linux.pollfd { .fd = fd, .events = events, .revents = undefined },
+    var pollfds = [1]std.os.linux.pollfd {
+        std.os.linux.pollfd { .fd = fd, .events = events, .revents = undefined },
     };
-    const result = os.poll(&pollfds, timeoutMillis) catch |e| switch (e) {
+    const result = posix.poll(&pollfds, timeoutMillis) catch |e| switch (e) {
         error.SystemResources
         ,error.NetworkSubsystemFailed
         => {
@@ -216,7 +223,7 @@ fn waitGenericTimeout(fd: fd_t, timeoutMillis: i32, events: i16) !bool {
 
 // returns: true if readable, false on timeout
 pub fn waitReadableTimeout(fd: fd_t, timeoutMillis: i32) !bool {
-    return waitGenericTimeout(fd, timeoutMillis, os.POLL.IN);
+    return waitGenericTimeout(fd, timeoutMillis, posix.POLL.IN);
 }
 pub fn waitReadable(fd: fd_t) !void {
     if (!try waitReadableTimeout(fd, -1))
@@ -224,19 +231,21 @@ pub fn waitReadable(fd: fd_t) !void {
 }
 
 pub fn waitWriteableTimeout(fd: fd_t, timeoutMillis: i32) !bool {
-    return waitGenericTimeout(fd, timeoutMillis, os.POLL.OUT);
+    return waitGenericTimeout(fd, timeoutMillis, posix.POLL.OUT);
 }
 
 pub fn recvfullTimeout(sockfd: socket_t, buf: []u8, timeoutMillis: u32) !bool {
     var newTimeoutMillis = timeoutMillis;
     var totalReceived : usize = 0;
-    while (newTimeoutMillis > @intCast(u32, std.math.maxInt(i32))) {
+    while (newTimeoutMillis > @as(u32, @intCast(std.math.maxInt(i32)))) {
         const received = try recvfullTimeoutHelper(sockfd, buf[totalReceived..], std.math.maxInt(i32));
         totalReceived += received;
         if (totalReceived == buf.len) return true;
         newTimeoutMillis -= std.math.maxInt(i32);
     }
-    totalReceived += try recvfullTimeoutHelper(sockfd, buf[totalReceived..], @intCast(i32, newTimeoutMillis));
+    totalReceived += try recvfullTimeoutHelper(
+        sockfd, buf[totalReceived..], @intCast(newTimeoutMillis)
+    );
     return totalReceived == buf.len;
 }
 fn recvfullTimeoutHelper(sockfd: socket_t, buf: []u8, timeoutMillis: i32) !usize {
@@ -247,7 +256,7 @@ fn recvfullTimeoutHelper(sockfd: socket_t, buf: []u8, timeoutMillis: i32) !usize
         while (true) {
             const readable = try waitReadableTimeout(sockfd, timeoutMillis);
             if (!readable) break;
-            const result = try os.read(sockfd, buf[totalReceived..]);
+            const result = try posix.read(sockfd, buf[totalReceived..]);
             if (result <= 0) break;
             totalReceived += result;
             if (totalReceived == buf.len) break;
@@ -262,7 +271,7 @@ fn recvfullTimeoutHelper(sockfd: socket_t, buf: []u8, timeoutMillis: i32) !usize
 pub fn getOptArg(args: anytype, i: *usize) !@TypeOf(args[0]) {
     i.* += 1;
     if (i.* >= args.len) {
-        std.debug.warn("Error: option '{s}' requires an argument\n", .{args[i.* - 1]});
+        std.debug.print("Error: option '{s}' requires an argument\n", .{args[i.* - 1]});
         return error.CommandLineOptionMissingArgument;
     }
     return args[i.*];

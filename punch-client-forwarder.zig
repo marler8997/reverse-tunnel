@@ -1,6 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
-const os = std.os;
+const posix = std.posix;
 const net = std.net;
 
 const logging = @import("./logging.zig");
@@ -12,7 +12,7 @@ const punch = @import("./punch.zig");
 const proxy = @import("./proxy.zig");
 
 const log = logging.log;
-const fd_t = os.fd_t;
+const fd_t = posix.fd_t;
 const Address = net.Address;
 const delaySeconds = common.delaySeconds;
 const Timestamp = timing.Timestamp;
@@ -39,8 +39,9 @@ const Eventer = eventing.EventerTemplate(.{
 });
 
 const global = struct {
-    var ignoreSigaction : os.Sigaction = undefined;
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var ignoreSigaction : posix.Sigaction = undefined;
+    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const arena = arena_instance.allocator();
     var rawForwardAddr : Address = undefined;
     var buffer : [8192]u8 = undefined;
 };
@@ -54,14 +55,14 @@ fn setupSignals() void {
 }
 
 fn usage() void {
-    std.debug.warn("Usage: punch-client-forwarder PUNCH_SERVER PUNCH_PORT FORWARD_HOST FORWARD_PORT\n", .{});
-    std.debug.warn("\n", .{});
-    std.debug.warn("enable proxy with http://PROXY_HOST:PROXY_PORT/PUNCH_SERVER\n", .{});
+    std.debug.print("Usage: punch-client-forwarder PUNCH_SERVER PUNCH_PORT FORWARD_HOST FORWARD_PORT\n", .{});
+    std.debug.print("\n", .{});
+    std.debug.print("enable proxy with http://PROXY_HOST:PROXY_PORT/PUNCH_SERVER\n", .{});
 }
 pub fn main() anyerror!u8 {
     setupSignals();
 
-    var args = try std.process.argsAlloc(&global.arena.allocator);
+    var args = try std.process.argsAlloc(global.arena);
     if (args.len <= 1) {
         usage();
         return 1;

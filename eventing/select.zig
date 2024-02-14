@@ -29,15 +29,16 @@ pub const EventFlags = struct {
 //       pass it as an argument
 pub fn EventerTemplate(comptime options: EventerOptions) type {
     return struct {
+        const Self = @This();
         pub const Fd = platform.fd_t;
         pub const Data = options.Data;
         pub const CallbackError = options.CallbackError;
-        pub const CallbackFn = fn(server: *@This(), callback: *Callback) CallbackError!void;
+        pub const CallbackFn = *const fn(server: *Self, callback: *Callback) CallbackError!void;
         pub const Callback = struct {
             func: CallbackFn,
             data: options.CallbackData,
-            pub fn init(func: CallbackFn, data: options.CallbackData) @This() {
-                return @This() {
+            pub fn init(func: CallbackFn, data: options.CallbackData) Self {
+                return Self {
                     .func = func,
                     .data = data,
                 };
@@ -54,14 +55,14 @@ pub fn EventerTemplate(comptime options: EventerOptions) type {
         data: Data,
         fdlist: [64]FdInfo,
         fdcount: CountType,
-        pub fn init(data: Data) !@This() {
-            var this : @This() = undefined;
+        pub fn init(data: Data) !Self {
+            var this : Self = undefined;
             this.data = data;
             this.fdcount = 0;
             return this;
         }
 
-        fn find(self: @This(), fd: platform.fd_t) ?CountType {
+        fn find(self: Self, fd: platform.fd_t) ?CountType {
             var i : CountType = 0;
             while (i < self.fdcount) : (i += 1) {
                 if (self.fdlist[i].fd == fd)
@@ -70,22 +71,22 @@ pub fn EventerTemplate(comptime options: EventerOptions) type {
             return null;
         }
 
-        pub fn add(self: *@This(), fd: platform.fd_t, flags: u32, callback: *Callback) common.EventerAddError!void {
+        pub fn add(self: *Self, fd: platform.fd_t, flags: u32, callback: *Callback) common.EventerAddError!void {
             if (self.fdcount == self.fdlist.len)
                 return error.UserResourceLimitReached;
             std.debug.assert(self.find(fd) == null);
             self.fdlist[self.fdcount] = .{ .fd = fd, .flags = flags, .callback = callback };
             self.fdcount += 1;
         }
-        pub fn modify(self: *@This(), fd: platform.fd_t, flags: u32, callback: *Callback) common.EventerAddError!void {
+        pub fn modify(self: *Self, fd: platform.fd_t, flags: u32, callback: *Callback) common.EventerAddError!void {
             if (self.find(fd)) |i| {
                 self.fdlist[i].flags = flags;
                 self.fdlist[i].callback = callback;
             } else return error.SocketNotAddedToEventer;
         }
-        pub fn remove(self: *@This(), fd: platform.fd_t) void {
+        pub fn remove(self: *Self, fd: platform.fd_t) void {
             if (self.find(fd)) |i| {
-                var j = i;
+                const j = i;
                 while (j + 1 < self.fdcount) {
                     self.fdlist[j] = self.fdlist[j+1];
                 }
@@ -94,7 +95,7 @@ pub fn EventerTemplate(comptime options: EventerOptions) type {
         }
 
         // returns: false if there was a timeout
-        fn handleEventsGeneric(self: *@This(), timeout_ms: i32) CallbackError!bool {
+        fn handleEventsGeneric(self: *Self, timeout_ms: i32) CallbackError!bool {
 
             const nfds = if (builtin.os.tag == .windows) 0 else @compileError("select nfds not implemented for non-windows");
 
@@ -116,14 +117,14 @@ pub fn EventerTemplate(comptime options: EventerOptions) type {
             const timeout = init: {
                 if (timeout_ms == -1) break :init null;
                 std.debug.assert(timeout_ms >= 0);
-                timeout_buf = platform.msToTimeval(@intCast(u31, timeout_ms));
+                timeout_buf = platform.msToTimeval(@intCast(timeout_ms));
                 break :init &timeout_buf;
             };
             const result = platform.select(nfds, read_set.base(), write_set.base(), error_set.base(), timeout);
             if (result == -1) {
                 // TODO: create wrapper function in std.os to handle all error codes
                 std.debug.panic("select failed, lasterror = {}", .{std.os.windows.ws2_32.WSAGetLastError()});
-                //std.debug.warn("Error: select failed, lasterror = {}", .{std.os.windows.ws2_32.WSAGetLastError()});
+                //std.debug.print("Error: select failed, lasterror = {}", .{std.os.windows.ws2_32.WSAGetLastError()});
                 //return error.SelectFailed;
             }
             if (result == 0)
@@ -141,12 +142,12 @@ pub fn EventerTemplate(comptime options: EventerOptions) type {
             return true;
         }
 
-        pub fn handleEventsNoTimeout(self: *@This()) CallbackError!void {
+        pub fn handleEventsNoTimeout(self: *Self) CallbackError!void {
             if (!try self.handleEventsGeneric(-1))
                 std.debug.panic("select returned 0 with ifinite timeout?", .{});
         }
 
-        pub fn loop(self: *@This()) anyerror!void {
+        pub fn loop(self: *Self) anyerror!void {
             _ = self;
             std.debug.panic("not implemented", .{});
             //while (true) {
@@ -154,13 +155,13 @@ pub fn EventerTemplate(comptime options: EventerOptions) type {
             //    writeSet: fd_set,
             //    errorSet: fd_set,
             //    var events : [16]os.epoll_event = undefined;
-            //    //std.debug.warn("[DEBUG] waiting for event...\n", .{});
+            //    //std.debug.print("[DEBUG] waiting for event...\n", .{});
             //    const count = os.epoll_wait(self.epollfd, &events, -1);
-            //    //std.debug.warn("[DEBUG] epoll_wait returned {}\n", .{count});
+            //    //std.debug.print("[DEBUG] epoll_wait returned {}\n", .{count});
             //    {
             //        const errno = os.errno(count);
             //        if (errno != 0) {
-            //            std.debug.warn("epoll_wait failed, errno={}", .{errno});
+            //            std.debug.print("epoll_wait failed, errno={}", .{errno});
             //            return error.EpollFailed;
             //        }
             //    }

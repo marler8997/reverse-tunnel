@@ -1,7 +1,7 @@
 const std = @import("std");
-const os = std.os;
+const posix = std.posix;
 
-pub const fd_t = os.socket_t;
+pub const fd_t = posix.socket_t;
 
 pub const fd_base_set = extern struct {
     fd_count: c_uint,
@@ -13,7 +13,7 @@ pub fn fd_set(comptime setSize: comptime_int) type {
         fd_count: c_uint,
         fd_array: [setSize]fd_t,
         pub fn base(self: *@This()) *fd_base_set {
-            return @ptrCast(*fd_base_set, self);
+            return @ptrCast(self);
         }
         pub fn add(self: *@This(), fd: fd_t) void {
             self.fd_array[self.fd_count] = fd;
@@ -33,7 +33,7 @@ pub extern "ws2_32" fn select(
     writefds: *fd_base_set,
     exceptfds: *fd_base_set,
     timeout: ?*const timeval,
-) callconv(os.windows.WINAPI) c_int;
+) callconv(std.os.windows.WINAPI) c_int;
 
 pub fn set_fd(comptime SetType: type, set: *SetType, s: fd_t) void {
     set.fd_array[set.fd_count] = s;

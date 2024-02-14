@@ -42,7 +42,7 @@ const global = struct {
 
 fn peelTo(strRef: *[]const u8, to: u8) ?[]const u8 {
     var str = strRef.*;
-    for (str) |c, i| {
+    for (str, 0..) |c, i| {
         if (c == to) {
             strRef.* = str[i+1..];
             return str[0..i];
@@ -81,7 +81,7 @@ const Addr = union(enum) {
     pub fn parse(spec: []const u8) !Addr {
         var rest = spec;
         const specType = peelTo(&rest, ':') orelse {
-            std.debug.warn("Error: address '{s}' missing ':' to delimit type\n", .{spec});
+            std.debug.print("Error: address '{s}' missing ':' to delimit type\n", .{spec});
             return error.ParseAddrFailed;
         };
         if (mem.eql(u8, specType, "tcp-connect"))
@@ -91,7 +91,7 @@ const Addr = union(enum) {
         if (mem.eql(u8, specType, "tcp-listen"))
             return Addr { .TcpListen = try TcpListen.parse(rest) };
 
-        std.debug.warn("Error: unknown address-specifier type '{s}'\n", .{specType});
+        std.debug.print("Error: unknown address-specifier type '{s}'\n", .{specType});
         return error.ParseAddrFailed;
     }
     pub fn prepareConnect(self: *const Addr) !ConnectPrep {
@@ -175,7 +175,7 @@ const Addr = union(enum) {
         pub fn parse(spec: []const u8) !TcpConnect {
             var rest = spec;
             const host = peelTo(&rest, ':') orelse {
-                std.debug.warn("Error: 'tcp-connect:{s}' missing ':' to delimit host\n", .{spec});
+                std.debug.print("Error: 'tcp-connect:{s}' missing ':' to delimit host\n", .{spec});
                 return error.ParseAddrFailed;
             };
             const port = try common.parsePort(rest);
@@ -219,15 +219,15 @@ const Addr = union(enum) {
         pub fn parse(spec: []const u8) !ProxyConnect {
             var rest = spec;
             const proxyHost = peelTo(&rest, ':') orelse {
-                std.debug.warn("Error: 'proxy-connect:{s}' missing ':' to delimit proxy-host\n", .{spec});
+                std.debug.print("Error: 'proxy-connect:{s}' missing ':' to delimit proxy-host\n", .{spec});
                 return error.ParseAddrFailed;
             };
             const proxyPort = try common.parsePort(peelTo(&rest, ':') orelse {
-                std.debug.warn("Error: 'proxy-connect:{s}' missing 2nd ':' to delimit proxy-port\n", .{spec});
+                std.debug.print("Error: 'proxy-connect:{s}' missing 2nd ':' to delimit proxy-port\n", .{spec});
                 return error.ParseAddrFailed;
             });
             const targetHost = peelTo(&rest, ':') orelse {
-                std.debug.warn("Error: 'proxy-connect:{s}' missing the 3rd ':' to delimit host\n", .{spec});
+                std.debug.print("Error: 'proxy-connect:{s}' missing the 3rd ':' to delimit host\n", .{spec});
                 return error.ParseAddrFailed;
             };
             const targetPort = try common.parsePort(rest);
@@ -269,7 +269,7 @@ const Addr = union(enum) {
         port: u16,
         //listenAddr: ?Address,
         pub fn parse(spec: []const u8) !TcpListen {
-            var rest = spec;
+            const rest = spec;
             const port = try common.parsePort(rest);
             return TcpListen {
                 .port = port,
@@ -329,7 +329,7 @@ const Addr = union(enum) {
 const InOut = struct { in: socket_t, out: socket_t };
 
 fn usage() void {
-    std.debug.warn(
+    std.debug.print(
         \\Usage: socat ADDRESS1 ADDRESS2
         \\Address Specifiers:
         \\    tcp-connect:<host>:<port>
@@ -343,8 +343,9 @@ pub fn main() anyerror!u8 {
         _ = try std.os.windows.WSAStartup(2, 2);
     }
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    var args = try std.process.argsAlloc(&arena.allocator);
+    var arena_instance = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    const arena = arena_instance.allocator();
+    var args = try std.process.argsAlloc(arena);
     if (args.len <= 1) {
         usage();
         return 1;
@@ -363,14 +364,14 @@ pub fn main() anyerror!u8 {
             } else if (std.mem.eql(u8, arg, "--no-throttle")) {
                 noThrottle = true;
             } else {
-                std.debug.warn("Error: unknown command-line option '{s}'\n", .{arg});
+                std.debug.print("Error: unknown command-line option '{s}'\n", .{arg});
                 return 1;
             }
         }
     }
 
     if (args.len != 2) {
-        std.debug.warn("Error: expected 2 command-line arguments but got {}\n", .{args.len});
+        std.debug.print("Error: expected 2 command-line arguments but got {}\n", .{args.len});
         return 1;
     }
 
